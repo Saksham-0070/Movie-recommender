@@ -2,7 +2,7 @@
 
 Find your next favorite movie with AI-powered recommendations.
 
-🔗 **Live Demo:** [Add your Streamlit link here]  
+🔗 **Live Demo:** https://movie-recommender-007.streamlit.app/
 💻 **GitHub:** https://github.com/Saksham-0070/Movie-recommender
 
 ---

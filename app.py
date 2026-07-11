@@ -244,19 +244,81 @@ def load_data():
         "https://github.com/Saksham-0070/Movie-recommender/releases/download/v1.0/similarity.pkl"
     )
 
-    if not os.path.exists(similarity_path):
-        with st.spinner("Downloading similarity matrix for the first time..."):
-            response = SESSION.get(similarity_url, stream=True, timeout=30)
-            response.raise_for_status()
-            with open(similarity_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+    def _cleanup_partial_file():
+        if os.path.exists(similarity_path):
+            try:
+                os.remove(similarity_path)
+            except OSError:
+                logger.warning("Could not remove partial file %s.", similarity_path)
 
-    with open("movies_dict.pkl", "rb") as f:
-        movies_dict = pickle.load(f)
-    with open(similarity_path, "rb") as f:
-        similarity = pickle.load(f)
+    def _download_similarity():
+        try:
+            with st.spinner("Downloading similarity matrix for the first time..."):
+                response = SESSION.get(similarity_url, stream=True, timeout=30)
+                response.raise_for_status()
+                with open(similarity_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                st.error("Similarity matrix file not found on GitHub Releases (404). "
+                          "Please check that the release URL is correct.")
+            else:
+                st.error(f"Failed to download similarity matrix (HTTP {status}).")
+            _cleanup_partial_file()
+            st.stop()
+        except requests.exceptions.Timeout:
+            st.error("The download timed out. Please check your internet connection and try again.")
+            _cleanup_partial_file()
+            st.stop()
+        except requests.exceptions.ConnectionError:
+            st.error("Could not connect to GitHub. Please check your internet connection and try again.")
+            _cleanup_partial_file()
+            st.stop()
+        except requests.exceptions.RequestException as e:
+            st.error(f"An unexpected network error occurred while downloading the file: {e}")
+            _cleanup_partial_file()
+            st.stop()
+        except OSError as e:
+            st.error(f"Failed to save the similarity matrix to disk: {e}")
+            _cleanup_partial_file()
+            st.stop()
+        except Exception as e:
+            st.error(f"An unexpected error occurred while downloading the similarity matrix: {e}")
+            _cleanup_partial_file()
+            st.stop()
+
+    if not os.path.exists(similarity_path):
+        _download_similarity()
+
+    try:
+        with open("movies_dict.pkl", "rb") as f:
+            movies_dict = pickle.load(f)
+    except FileNotFoundError:
+        st.error("Required file 'movies_dict.pkl' is missing. Please make sure it's included with the app.")
+        st.stop()
+    except (pickle.UnpicklingError, EOFError, AttributeError) as e:
+        st.error(f"'movies_dict.pkl' appears to be corrupted and could not be loaded: {e}")
+        st.stop()
+
+    try:
+        with open(similarity_path, "rb") as f:
+            similarity = pickle.load(f)
+    except (pickle.UnpicklingError, EOFError, AttributeError):
+        st.warning("The similarity matrix file appears to be corrupted. Attempting to re-download...")
+        _cleanup_partial_file()
+        _download_similarity()
+        try:
+            with open(similarity_path, "rb") as f:
+                similarity = pickle.load(f)
+        except Exception as e:
+            st.error(f"Failed to load the similarity matrix even after re-downloading: {e}")
+            st.stop()
+    except FileNotFoundError:
+        st.error("Similarity matrix file went missing unexpectedly. Please rerun the app.")
+        st.stop()
 
     return pd.DataFrame(movies_dict), similarity
 
@@ -369,3 +431,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

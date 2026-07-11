@@ -1,7 +1,6 @@
 import logging
 import os
 import pickle
-import gdown
 
 import pandas as pd
 import requests
@@ -240,12 +239,23 @@ SESSION = create_session()
 # ─────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    url = "https://drive.google.com/uc?id=1Q77qkoyf_FLM2pHyO8WwEz_e9VTK44PA"
-    gdown.download(url, "similarity.pkl", quiet=False)
+    similarity_path = "similarity.pkl"
+    similarity_url = (
+        "https://github.com/Saksham-0070/Movie-recommender/releases/download/v1.0/similarity.pkl"
+    )
+
+    if not os.path.exists(similarity_path):
+        with st.spinner("Downloading similarity matrix for the first time..."):
+            response = SESSION.get(similarity_url, stream=True, timeout=30)
+            response.raise_for_status()
+            with open(similarity_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
 
     with open("movies_dict.pkl", "rb") as f:
         movies_dict = pickle.load(f)
-    with open("similarity.pkl", "rb") as f:
+    with open(similarity_path, "rb") as f:
         similarity = pickle.load(f)
 
     return pd.DataFrame(movies_dict), similarity
